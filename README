@@ -1,0 +1,35 @@
+Simple similarity service based on chapter 3 of http://infolab.stanford.edu/~ullman/mmds.html.
+Backed by Redis but easily adaptable to other stores.
+
+Very, very, very early days.
+
+Building:
+
+mvn package
+
+The test scripts described below assume you have a redis going on localhost.
+
+Initializing:
+
+scripts/tool Initialize <bands> <rows> <minCount>
+
+- only run this *once*, before you load in any data
+- bands and rows define the similarity threshold, as outlined in the book
+- minCount is how many items a set has to have before it is considered for similarity with others
+- a good default set of values:
+    scripts/tool Initialize 5 25 5
+
+Loading:
+
+scripts/tool Load <file.tsv>
+
+- run as many times as you like with different data
+- expects two tab-separated columns: set key, then item key
+
+Dumping:
+
+scripts/tool Dump
+
+- this will dump out all pairs of similar sets
+- format is TSV, columns are similarity, size of intersection, item1, item2
+
