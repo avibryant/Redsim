@@ -1,7 +1,6 @@
 package com.avibryant.redsim
 import redis.clients.jedis._
 import redis.clients.util.MurmurHash
-import org.msgpack._
 
 class RedisHashing extends Hashing {
   def hashFor(str : String, seed : Int) = MurmurHash.hash(str.getBytes, seed)
@@ -22,11 +21,11 @@ class RedisConnection(jedis : Jedis) extends Connection {
   }
 
   def writeConfiguration(config : Configuration) {
-    writeInts(configKey, Array(
+    jedis.set(configKey.getBytes, intsToBytes(Array(
       config.numRows,
       config.numBands,
       config.minCount) ++
-      config.seeds)
+      config.seeds))
   }
 
   def reset {
@@ -67,7 +66,7 @@ class RedisConnection(jedis : Jedis) extends Connection {
 */
   def writeSignature(key : String, sig : Signature) {
     checkInTransaction
-    writeInts(transaction, sigKey(key), Array(sig.count) ++ sig.values)
+    transaction.set(sigKey(key).getBytes, intsToBytes(Array(sig.count) ++ sig.values))
   }
   def writeBuckets(key : String, sig : Signature) {
     checkInTransaction
@@ -128,13 +127,17 @@ class RedisConnection(jedis : Jedis) extends Connection {
       sys.error("Not in a transaction")
   }
 
-  val messagePack = new MessagePack
-
   private def readInts(key : String) : Array[Int] = {
     val bytes = jedis.get(key.getBytes)
     if(bytes == null)
-      return Array[Int]()
+      Array[Int]()
+    else
+      bytesToInts(bytes)
+  }
 
+  val messagePack = new org.msgpack.MessagePack
+
+  private def bytesToInts(bytes : Array[Byte]) : Array[Int] = {
     val unpacker = messagePack.createBufferUnpacker
     unpacker.feed(bytes)
     var count = unpacker.readArrayBegin
@@ -146,20 +149,11 @@ class RedisConnection(jedis : Jedis) extends Connection {
     return ints.reverse.toArray
   }
 
-  private def writeInts(txn : Transaction, key : String, ints : Array[Int]) {
+  private def intsToBytes(ints : Array[Int]) : Array[Byte] = {
     val packer = messagePack.createBufferPacker
     packer.writeArrayBegin(ints.size)
     ints.foreach{i => packer.write(i)}
     packer.writeArrayEnd
-    txn.set(key.getBytes, packer.toByteArray)
+    packer.toByteArray
   }
-
-  private def writeInts(key : String, ints : Array[Int]) {
-    val packer = messagePack.createBufferPacker
-    packer.writeArrayBegin(ints.size)
-    ints.foreach{i => packer.write(i)}
-    packer.writeArrayEnd
-    jedis.set(key.getBytes, packer.toByteArray)
-  }
-
 }
