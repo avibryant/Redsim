@@ -1,2 +1,2 @@
 #!/bin/sh
-java -cp target/redsim-1.0-SNAPSHOT.jar com.avibryant.redsim.tools.$@
+java -cp target/redsim-1.0-SNAPSHOT.jar com.avibryant.redsim.tools."$@"

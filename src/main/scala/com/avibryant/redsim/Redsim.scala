@@ -52,6 +52,7 @@ class Redsim(val conn : Connection) {
         bucket => conn.readBucket(band, bucket.toInt)
       }
     }
+    println(bucketsOfKeys.size)
 
     bucketsOfKeys.flatMap{
       bucket => bucket.zipWithIndex.flatMap {

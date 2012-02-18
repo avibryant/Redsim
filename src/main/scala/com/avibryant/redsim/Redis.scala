@@ -48,11 +48,15 @@ class RedisConnection(jedis : Jedis) extends Connection {
   def lockSignature(key : String)(fn : Option[Signature] => Unit)(implicit config : Configuration) {
     jedis.watch(sigKey(key))
     val sig = readSignature(key)
-    //not thread safe
+
     transaction = jedis.multi()
     fn(sig)
-    transaction.exec()
+    val result = transaction.exec()
     transaction = null
+    if(result == null) {
+      System.err.println("Retrying " + key)
+      lockSignature(key)(fn)
+    }
   }
 
 /*
