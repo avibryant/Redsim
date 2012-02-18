@@ -1,6 +1,7 @@
 package com.avibryant.redsim
 import redis.clients.jedis._
 import redis.clients.util.MurmurHash
+import org.msgpack._
 
 class RedisHashing extends Hashing {
   def hashFor(str : String, seed : Int) = MurmurHash.hash(str.getBytes, seed)
@@ -28,16 +29,25 @@ class RedisConnection(jedis : Jedis) extends Connection {
       config.seeds)
   }
 
+  def reset {
+    while(jedis.llen(sigListKey) > 0)
+      jedis.del(jedis.rpop(sigListKey))
+
+    jedis.keys(prefix + "*").toArray(Array[String]()).foreach{
+      jedis.del(_)
+    }
+  }
+
   def readSignature(key : String)(implicit config : Configuration) = {
     readInts(sigKey(key)) match {
       case(Array(count, values @ _*)) =>
-        Some(new Signature(count, values.toArray))
+        Some(new Signature(count.toInt, values.map{i => i.toInt}.toArray))
       case _ => None
     }
   }
 
   def lockSignature(key : String)(fn : Option[Signature] => Unit)(implicit config : Configuration) {
-    jedis.watch(key)
+    jedis.watch(sigKey(key))
     val sig = readSignature(key)
     //not thread safe
     transaction = jedis.multi()
@@ -46,11 +56,19 @@ class RedisConnection(jedis : Jedis) extends Connection {
     transaction = null
   }
 
+/*
+  def writeSignature(key : String, sig : Signature) {
+    checkInTransaction
+    val sk = sigKey(key)
+    transaction.rpush(sk, sig.count.toString)
+    sig.values.foreach{i => transaction.rpush(sk, i.toString)}
+    transaction.lpush(sigListKey, sk)
+  }
+*/
   def writeSignature(key : String, sig : Signature) {
     checkInTransaction
     writeInts(transaction, sigKey(key), Array(sig.count) ++ sig.values)
   }
-
   def writeBuckets(key : String, sig : Signature) {
     checkInTransaction
     sig.buckets.zipWithIndex.foreach{
@@ -60,6 +78,15 @@ class RedisConnection(jedis : Jedis) extends Connection {
       }
     }
   }
+/*
+  def updateSignature(key : String, oldSig : Signature, newSig : Signature) {
+    checkInTransaction
+    transaction.lset(sigKey(key), 0, newSig.count.toString)
+    newSig.updatedValues(oldSig).foreach{
+      case ((b,a), i) => transaction.lset(sigKey(key), i+1, a.toString)
+    }
+  }
+*/
 
   def updateSignature(key : String, oldSig : Signature, newSig : Signature) {
     writeSignature(key, newSig)
@@ -91,6 +118,7 @@ class RedisConnection(jedis : Jedis) extends Connection {
   }
 
   private def configKey = prefix + "config"
+  private def sigListKey = prefix + "sigList"
   private def sigKey(key : String) = prefix + "sig:" + key
   private def bandKey(band : Int) = prefix + "band:" + band
   private def bandCountKey(band : Int) = prefix + "bandCount:" + band
@@ -99,20 +127,39 @@ class RedisConnection(jedis : Jedis) extends Connection {
     if(transaction == null)
       sys.error("Not in a transaction")
   }
-  private def readInts(key : String) = {
-    val str = jedis.get(key)
-    if(str == null)
-      Array[Int]()
-    else
-      str.split(":").map{_.toInt}
+
+  val messagePack = new MessagePack
+
+  private def readInts(key : String) : Array[Int] = {
+    val bytes = jedis.get(key.getBytes)
+    if(bytes == null)
+      return Array[Int]()
+
+    val unpacker = messagePack.createBufferUnpacker
+    unpacker.feed(bytes)
+    var count = unpacker.readArrayBegin
+    var ints : List[Int] = Nil
+    while(count > 0) {
+      ints = unpacker.readInt :: ints
+      count -= 1
+    }
+    return ints.reverse.toArray
   }
 
   private def writeInts(txn : Transaction, key : String, ints : Array[Int]) {
-    txn.set(key, ints.mkString(":"))
+    val packer = messagePack.createBufferPacker
+    packer.writeArrayBegin(ints.size)
+    ints.foreach{i => packer.write(i)}
+    packer.writeArrayEnd
+    txn.set(key.getBytes, packer.toByteArray)
   }
 
   private def writeInts(key : String, ints : Array[Int]) {
-    jedis.set(key, ints.mkString(":"))
+    val packer = messagePack.createBufferPacker
+    packer.writeArrayBegin(ints.size)
+    ints.foreach{i => packer.write(i)}
+    packer.writeArrayEnd
+    jedis.set(key.getBytes, packer.toByteArray)
   }
 
 }

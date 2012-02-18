@@ -1,5 +1,6 @@
 package com.avibryant.redsim.tools
 import com.avibryant.redsim._
+import scala.collection.mutable._
 
 object Initialize extends App {
   val bands = args(0).toInt
@@ -13,19 +14,22 @@ object Initialize extends App {
 object Load extends App {
   val filename = args(0)
   val lines = scala.io.Source.fromFile(filename).getLines
-  val rs = new Redsim(new RedisConnection())
   var counter = 0
 
-  lines.
-    foreach{line =>
-    val parts = line.split("\t")
-    val set = parts(0)
-    val item = parts(1)
-    rs.addItems(set, List(item))
-    counter += 1
-    if(counter % 100 == 0)
-      System.err.println(counter)
-  }
+  lines.grouped(10000).
+    foreach{group =>
+      val buffer = new HashMap[String,ListBuffer[String]]()
+      group.foreach{line =>
+        val parts = line.split("\t")
+        val set = parts(0)
+        val item = parts(1)
+        buffer.getOrElseUpdate(set, new ListBuffer[String]()) += (item)
+        counter += 1
+      }
+      val rs = new Redsim(new RedisConnection())
+      buffer.foreach{case (key, items) => rs.addItems(key, items.toList)}
+      println(counter)
+    }
 }
 
 object Dump extends App {

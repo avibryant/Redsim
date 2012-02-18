@@ -16,5 +16,6 @@ abstract class Connection {
   def updateBuckets(key : String, oldSig : Signature, newSig : Signature) : Unit
   def readBucket(band : Int, bucket : Int) : List[String]
   def bucketsWithCandidates(band : Int) : List[String]
+  def reset : Unit
   implicit def hashing : Hashing
 }

@@ -18,6 +18,7 @@ class Redsim(val conn : Connection) {
   implicit val hashing = conn.hashing
 
   def initialize(config : Configuration) {
+    conn.reset
     conn.writeConfiguration(config)
   }
 
