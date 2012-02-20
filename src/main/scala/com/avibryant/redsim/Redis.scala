@@ -29,10 +29,7 @@ class RedisConnection(jedis : Jedis) extends Connection {
   }
 
   def reset {
-    while(jedis.llen(sigListKey) > 0)
-      jedis.del(jedis.rpop(sigListKey))
-
-    jedis.keys(prefix + "*").toArray(Array[String]()).foreach{
+     jedis.keys(prefix + "*").toArray(Array[String]()).foreach{
       jedis.del(_)
     }
   }
@@ -71,7 +68,9 @@ class RedisConnection(jedis : Jedis) extends Connection {
   def writeSignature(key : String, sig : Signature) {
     checkInTransaction
     transaction.set(sigKey(key).getBytes, intsToBytes(Array(sig.count) ++ sig.values))
+    transaction.zadd(sigListKey, sig.count, key)
   }
+
   def writeBuckets(key : String, sig : Signature) {
     checkInTransaction
     sig.buckets.zipWithIndex.foreach{
@@ -107,12 +106,18 @@ class RedisConnection(jedis : Jedis) extends Connection {
   }
 
   def readBucket(band : Int, bucket : Int) = {
-    jedis.zrangeByScore(bandKey(band), bucket, bucket).toArray(Array[String]()).toList
+    stringList(jedis.zrangeByScore(bandKey(band), bucket, bucket))
   }
 
   def bucketsWithCandidates(band : Int) = {
-    jedis.zrangeByScore(bandCountKey(band), 2, 2000).toArray(Array[String]()).toList
+    stringList(jedis.zrangeByScore(bandCountKey(band), 2, 2000))
   }
+
+  def keysWithCandidates(implicit config : Configuration) = {
+    stringList(jedis.zrangeByScore(sigListKey, config.minCount, 1000000))
+  }
+
+  private def stringList(set : java.util.Set[String]) = set.toArray(Array[String]()).toList
 
   implicit val hashing = new RedisHashing
 

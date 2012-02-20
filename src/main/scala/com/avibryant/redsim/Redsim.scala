@@ -11,6 +11,7 @@ case class Configuration(
   }
 
   def estimatedThreshold = math.pow(1.0/numBands, 1.0/numRows)
+  def probabilityOfInclusion(sim : Float) = 1.0 - math.pow(1.0 - math.pow(sim, numRows), numBands)
 }
 
 class Redsim(val conn : Connection) {
@@ -80,5 +81,7 @@ class Redsim(val conn : Connection) {
       case _ => sys.error("Could not find keys")
     }
   }
+
+  def keysWithCandidates = conn.keysWithCandidates
 }
 
